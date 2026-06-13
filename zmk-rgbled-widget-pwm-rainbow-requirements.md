@@ -69,7 +69,7 @@ CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON=y
 Rainbow tuning defaults:
 
 ```conf
-CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS=40
+CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS=80
 CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=96
 ```
 
@@ -134,7 +134,7 @@ This preserves the original purpose of the widget:
 
 Rainbow uses integer HSV-to-RGB conversion and `k_work_delayable`.
 
-The current hue step is `4` per update. The effective transition speed is controlled mostly by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS`, which defaults to `40`.
+The current hue step is `4` per update. The effective transition speed is controlled mostly by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS`, which defaults to `80`.
 
 ## Known Scope
 
