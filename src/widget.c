@@ -140,6 +140,7 @@ uint8_t led_current_color = 0;
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
 static struct k_work_delayable rainbow_work;
 static bool rainbow_active = false;
+static bool rainbow_enabled = false;
 static int64_t rainbow_suppressed_until;
 static uint8_t rainbow_hue;
 #endif
@@ -269,8 +270,8 @@ static void rainbow_work_handler(struct k_work *work) {
     k_work_schedule(&rainbow_work, K_MSEC(CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS));
 }
 
-static void set_rainbow_enabled(bool enabled) {
-    if (enabled) {
+static void set_rainbow_active(bool active) {
+    if (active) {
         rainbow_hue = 0;
         rainbow_suppressed_until = 0;
         rainbow_active = true;
@@ -284,9 +285,40 @@ static void set_rainbow_enabled(bool enabled) {
     }
 }
 
-void toggle_rainbow(void) {
-    set_rainbow_enabled(!rainbow_active);
+static void set_rainbow_enabled(bool enabled) {
+    rainbow_enabled = enabled;
+    set_rainbow_active(enabled);
 }
+
+void toggle_rainbow(void) {
+    set_rainbow_enabled(!rainbow_enabled);
+}
+
+static int rainbow_activity_listener_cb(const zmk_event_t *eh) {
+    struct zmk_activity_state_changed *ev = as_zmk_activity_state_changed(eh);
+
+    if (ev == NULL) {
+        return 0;
+    }
+
+    switch (ev->state) {
+    case ZMK_ACTIVITY_SLEEP:
+        set_rainbow_active(false);
+        break;
+    case ZMK_ACTIVITY_ACTIVE:
+        if (rainbow_enabled) {
+            set_rainbow_active(true);
+        }
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+ZMK_LISTENER(rainbow_activity_listener, rainbow_activity_listener_cb);
+ZMK_SUBSCRIPTION(rainbow_activity_listener, zmk_activity_state_changed);
 #endif
 
 // define message queue of blink work items, that will be processed by a
