@@ -1,6 +1,11 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
 #include <zephyr/drivers/led.h>
+#endif
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_PWM)
+#include <zephyr/drivers/pwm.h>
+#endif
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 
@@ -28,6 +33,7 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
 #define LED_GPIO_NODE_ID DT_COMPAT_GET_ANY_STATUS_OKAY(gpio_leds)
 
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_red)),
@@ -36,16 +42,51 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_green)),
              "An alias for a green LED is not found for RGBLED_WIDGET");
 BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_blue)),
              "An alias for a blue LED is not found for RGBLED_WIDGET");
+#endif
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_PWM)
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_red_pwm)),
+             "An alias for a red PWM LED is not found for RGBLED_WIDGET");
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_green_pwm)),
+             "An alias for a green PWM LED is not found for RGBLED_WIDGET");
+BUILD_ASSERT(DT_NODE_EXISTS(DT_ALIAS(led_blue_pwm)),
+             "An alias for a blue PWM LED is not found for RGBLED_WIDGET");
+#endif
 
 BUILD_ASSERT(!(SHOW_LAYER_CHANGE && SHOW_LAYER_COLORS),
              "CONFIG_RGBLED_WIDGET_SHOW_LAYER_CHANGE and CONFIG_RGBLED_WIDGET_SHOW_LAYER_COLORS "
              "are mutually exclusive");
 
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
 // GPIO-based LED device and indices of red/green/blue LEDs inside its DT node
 static const struct device *led_dev = DEVICE_DT_GET(LED_GPIO_NODE_ID);
 static const uint8_t rgb_idx[] = {DT_NODE_CHILD_IDX(DT_ALIAS(led_red)),
                                   DT_NODE_CHILD_IDX(DT_ALIAS(led_green)),
                                   DT_NODE_CHILD_IDX(DT_ALIAS(led_blue))};
+#endif
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_PWM)
+static const struct pwm_dt_spec red_pwm = PWM_DT_SPEC_GET(DT_ALIAS(led_red_pwm));
+static const struct pwm_dt_spec green_pwm = PWM_DT_SPEC_GET(DT_ALIAS(led_green_pwm));
+static const struct pwm_dt_spec blue_pwm = PWM_DT_SPEC_GET(DT_ALIAS(led_blue_pwm));
+#endif
+
+static bool rgbled_backend_is_ready(void) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
+    if (!device_is_ready(led_dev)) {
+        LOG_ERR("RGB LED GPIO device not ready");
+        return false;
+    }
+#elif IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_PWM)
+    if (!pwm_is_ready_dt(&red_pwm) || !pwm_is_ready_dt(&green_pwm) ||
+        !pwm_is_ready_dt(&blue_pwm)) {
+        LOG_ERR("RGB LED PWM device not ready");
+        return false;
+    }
+#endif
+
+    return true;
+}
 
 // map from color values to names, for logging
 static const char *color_names[] = {"black", "red",     "green", "yellow",
@@ -96,24 +137,147 @@ static bool initialized = false;
 // track current color for persistent indicators (layer color)
 uint8_t led_current_color = 0;
 
-// low-level method to control the LED
-static void set_rgb_leds(uint8_t color, uint16_t duration_ms) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+static struct k_work_delayable rainbow_work;
+static bool rainbow_active = false;
+static uint8_t rainbow_hue;
+#endif
+
+static void color_to_rgb(uint8_t color, uint8_t *red, uint8_t *green, uint8_t *blue) {
+    *red = (color & BIT(0)) ? 255 : 0;
+    *green = (color & BIT(1)) ? 255 : 0;
+    *blue = (color & BIT(2)) ? 255 : 0;
+}
+
+static void set_rgb_leds_u8(uint8_t red, uint8_t green, uint8_t blue) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
+    const uint8_t values[] = {red, green, blue};
+
     for (uint8_t pos = 0; pos < 3; pos++) {
-        uint8_t bit = BIT(pos);
-        if ((bit & led_current_color) != (bit & color)) {
-            // bits are different, so we need to change one
-            if (bit & color) {
-                led_on(led_dev, rgb_idx[pos]);
-            } else {
-                led_off(led_dev, rgb_idx[pos]);
-            }
+        if (values[pos] > 0) {
+            led_on(led_dev, rgb_idx[pos]);
+        } else {
+            led_off(led_dev, rgb_idx[pos]);
         }
     }
+#elif IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_PWM)
+    const uint32_t red_pulse = ((uint64_t)red_pwm.period * red) / 255;
+    const uint32_t green_pulse = ((uint64_t)green_pwm.period * green) / 255;
+    const uint32_t blue_pulse = ((uint64_t)blue_pwm.period * blue) / 255;
+
+    pwm_set_dt(&red_pwm, red_pwm.period, red_pulse);
+    pwm_set_dt(&green_pwm, green_pwm.period, green_pulse);
+    pwm_set_dt(&blue_pwm, blue_pwm.period, blue_pulse);
+#endif
+}
+
+// low-level method to control the LED
+static void set_rgb_leds(uint8_t color, uint32_t duration_ms) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+    if (rainbow_active) {
+        if (duration_ms > 0) {
+            k_sleep(K_MSEC(duration_ms));
+        }
+        return;
+    }
+#endif
+
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+
+    color_to_rgb(color, &red, &green, &blue);
+    set_rgb_leds_u8(red, green, blue);
+
     if (duration_ms > 0) {
         k_sleep(K_MSEC(duration_ms));
     }
     led_current_color = color;
 }
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+static void hsv_to_rgb_u8(uint8_t hue, uint8_t *red, uint8_t *green, uint8_t *blue) {
+    uint8_t region = hue / 43;
+    uint8_t remainder = (hue - (region * 43)) * 6;
+    uint8_t p = 0;
+    uint8_t q = 255 - remainder;
+    uint8_t t = remainder;
+
+    switch (region) {
+    case 0:
+        *red = 255;
+        *green = t;
+        *blue = p;
+        break;
+    case 1:
+        *red = q;
+        *green = 255;
+        *blue = p;
+        break;
+    case 2:
+        *red = p;
+        *green = 255;
+        *blue = t;
+        break;
+    case 3:
+        *red = p;
+        *green = q;
+        *blue = 255;
+        break;
+    case 4:
+        *red = t;
+        *green = p;
+        *blue = 255;
+        break;
+    default:
+        *red = 255;
+        *green = p;
+        *blue = q;
+        break;
+    }
+}
+
+static void scale_brightness(uint8_t *red, uint8_t *green, uint8_t *blue) {
+    *red = (*red * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
+    *green = (*green * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
+    *blue = (*blue * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
+}
+
+static void rainbow_work_handler(struct k_work *work) {
+    if (!rainbow_active) {
+        return;
+    }
+
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+
+    hsv_to_rgb_u8(rainbow_hue, &red, &green, &blue);
+    scale_brightness(&red, &green, &blue);
+    set_rgb_leds_u8(red, green, blue);
+
+    rainbow_hue += 4;
+    k_work_schedule(&rainbow_work, K_MSEC(CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS));
+}
+
+static void set_rainbow_enabled(bool enabled) {
+    if (enabled) {
+        rainbow_hue = 0;
+        rainbow_active = true;
+        k_work_cancel_delayable(&rainbow_work);
+        k_work_schedule(&rainbow_work, K_NO_WAIT);
+    } else {
+        rainbow_active = false;
+        k_work_cancel_delayable(&rainbow_work);
+        set_rgb_leds_u8(0, 0, 0);
+        led_current_color = 0;
+    }
+}
+
+void toggle_rainbow(void) {
+    set_rainbow_enabled(!rainbow_active);
+}
+#endif
 
 // define message queue of blink work items, that will be processed by a
 // separate thread
@@ -366,6 +530,9 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 #if SHOW_LAYER_CHANGE
     k_work_init_delayable(&layer_indicate_work, indicate_layer_cb);
 #endif
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+    k_work_init_delayable(&rainbow_work, rainbow_work_handler);
+#endif
 
     while (true) {
         // wait until a blink item is received and process it
@@ -403,6 +570,17 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
     ARG_UNUSED(d0);
     ARG_UNUSED(d1);
     ARG_UNUSED(d2);
+
+    if (!rgbled_backend_is_ready()) {
+        return;
+    }
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON)
+    set_rainbow_enabled(true);
+    initialized = true;
+    LOG_INF("Finished initializing LED widget with rainbow enabled");
+    return;
+#endif
 
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
     // check and indicate battery level on thread start

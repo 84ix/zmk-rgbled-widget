@@ -1,0 +1,5 @@
+description: RGB LED rainbow indicator behavior
+
+compatible: "zmk,behavior-rgbled-rainbow"
+
+include: zero_param.yaml
