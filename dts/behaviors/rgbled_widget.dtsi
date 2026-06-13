@@ -15,5 +15,9 @@
             #binding-cells = <0>;
             indicate-layer;
         };
+        /omit-if-no-ref/ ind_rainbow: ind_rainbow {
+            compatible = "zmk,behavior-rgbled-rainbow";
+            #binding-cells = <0>;
+        };
     };
 };

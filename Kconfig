@@ -16,6 +16,45 @@ if RGBLED_WIDGET
 config LED
     default y
 
+choice RGBLED_WIDGET_BACKEND
+    prompt "RGB LED widget backend"
+    default RGBLED_WIDGET_BACKEND_PWM if SHIELD_RGBLED_PWM_ADAPTER
+    default RGBLED_WIDGET_BACKEND_GPIO
+
+config RGBLED_WIDGET_BACKEND_GPIO
+    bool "GPIO LED backend"
+
+config RGBLED_WIDGET_BACKEND_PWM
+    bool "PWM LED backend"
+    select PWM
+    select PINCTRL
+
+endchoice
+
+config RGBLED_WIDGET_RAINBOW
+    bool "Enable rainbow indicator behavior"
+    depends on RGBLED_WIDGET_BACKEND_PWM
+
+config RGBLED_WIDGET_RAINBOW_DEFAULT_ON
+    bool "Start the rainbow indicator on boot"
+    depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_DURATION_MS
+    int "Rainbow indicator duration in ms"
+    default 1200
+    depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_INTERVAL_MS
+    int "Rainbow indicator update interval in ms"
+    default 20
+    depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_BRIGHTNESS
+    int "Rainbow indicator brightness"
+    range 0 255
+    default 64
+    depends on RGBLED_WIDGET_RAINBOW
+
 config RGBLED_WIDGET_INTERVAL_MS
     int "Minimum wait duration between two blinks in ms"
     default 500
@@ -297,7 +336,12 @@ config RGBLED_WIDGET_LAYER_31_COLOR
 endif # RGBLED_WIDGET
 
 DT_COMPAT_ZMK_BEHAVIOR_RGBLED_WIDGET := zmk,behavior-rgbled-widget
+DT_COMPAT_ZMK_BEHAVIOR_RGBLED_RAINBOW := zmk,behavior-rgbled-rainbow
 
 config ZMK_BEHAVIOR_RGBLED_WIDGET
     bool
     default $(dt_compat_enabled,$(DT_COMPAT_ZMK_BEHAVIOR_RGBLED_WIDGET))
+
+config ZMK_BEHAVIOR_RGBLED_RAINBOW
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_ZMK_BEHAVIOR_RGBLED_RAINBOW))

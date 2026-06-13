@@ -1,0 +1,12 @@
+if SHIELD_RGBLED_PWM_ADAPTER
+
+config RGBLED_WIDGET
+    default y
+
+config RGBLED_WIDGET_BACKEND_PWM
+    default y
+
+config RGBLED_WIDGET_RAINBOW
+    default y
+
+endif # SHIELD_RGBLED_PWM_ADAPTER
