@@ -1,3 +1,14 @@
+# Fork-specific changes
+
+This fork keeps the original `zmk-rgbled-widget` behavior and adds an optional PWM backend for the Seeeduino XIAO BLE onboard RGB LED.
+
+- Adds `rgbled_pwm_adapter` for PWM control of the active-low onboard RGB LED on P0.26/P0.30/P0.06.
+- Adds `&ind_rainbow`, a zero-parameter behavior that toggles a continuous rainbow animation.
+- Adds `CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON` to start rainbow mode on boot.
+- Keeps existing battery, connectivity, and layer indicators higher priority than rainbow; rainbow resumes when those indicators are idle.
+
+See [zmk-rgbled-widget-pwm-rainbow-requirements.md](zmk-rgbled-widget-pwm-rainbow-requirements.md) for implementation details and configuration notes.
+
 # LED indicators using an RGB LED
 
 This is a [ZMK module](https://zmk.dev/docs/features/modules) containing a simple widget that utilizes a (typically built-in) RGB LED controlled by three separate GPIOs.
