@@ -46,13 +46,13 @@ config RGBLED_WIDGET_RAINBOW_DURATION_MS
 
 config RGBLED_WIDGET_RAINBOW_INTERVAL_MS
     int "Rainbow indicator update interval in ms"
-    default 20
+    default 40
     depends on RGBLED_WIDGET_RAINBOW
 
 config RGBLED_WIDGET_RAINBOW_BRIGHTNESS
     int "Rainbow indicator brightness"
     range 0 255
-    default 64
+    default 96
     depends on RGBLED_WIDGET_RAINBOW
 
 config RGBLED_WIDGET_INTERVAL_MS

@@ -140,6 +140,7 @@ uint8_t led_current_color = 0;
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
 static struct k_work_delayable rainbow_work;
 static bool rainbow_active = false;
+static int64_t rainbow_suppressed_until;
 static uint8_t rainbow_hue;
 #endif
 
@@ -175,10 +176,12 @@ static void set_rgb_leds_u8(uint8_t red, uint8_t green, uint8_t blue) {
 static void set_rgb_leds(uint8_t color, uint32_t duration_ms) {
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
     if (rainbow_active) {
-        if (duration_ms > 0) {
-            k_sleep(K_MSEC(duration_ms));
+        int64_t suppress_until =
+            k_uptime_get() + MAX(duration_ms, CONFIG_RGBLED_WIDGET_INTERVAL_MS);
+
+        if (suppress_until > rainbow_suppressed_until) {
+            rainbow_suppressed_until = suppress_until;
         }
-        return;
     }
 #endif
 
@@ -248,6 +251,12 @@ static void rainbow_work_handler(struct k_work *work) {
         return;
     }
 
+    int64_t remaining_suppression = rainbow_suppressed_until - k_uptime_get();
+    if (remaining_suppression > 0) {
+        k_work_schedule(&rainbow_work, K_MSEC(remaining_suppression));
+        return;
+    }
+
     uint8_t red;
     uint8_t green;
     uint8_t blue;
@@ -263,6 +272,7 @@ static void rainbow_work_handler(struct k_work *work) {
 static void set_rainbow_enabled(bool enabled) {
     if (enabled) {
         rainbow_hue = 0;
+        rainbow_suppressed_until = 0;
         rainbow_active = true;
         k_work_cancel_delayable(&rainbow_work);
         k_work_schedule(&rainbow_work, K_NO_WAIT);
