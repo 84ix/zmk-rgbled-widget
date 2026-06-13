@@ -70,7 +70,7 @@ Rainbow tuning defaults:
 
 ```conf
 CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS=80
-CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=96
+CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=168
 ```
 
 `CONFIG_RGBLED_WIDGET_RAINBOW_DURATION_MS` remains available from the initial implementation, but the current `&ind_rainbow` behavior is a continuous ON/OFF toggle and does not use a fixed duration.

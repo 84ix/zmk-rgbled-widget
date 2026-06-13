@@ -52,7 +52,7 @@ config RGBLED_WIDGET_RAINBOW_INTERVAL_MS
 config RGBLED_WIDGET_RAINBOW_BRIGHTNESS
     int "Rainbow indicator brightness"
     range 0 255
-    default 96
+    default 168
     depends on RGBLED_WIDGET_RAINBOW
 
 config RGBLED_WIDGET_INTERVAL_MS
