@@ -10,7 +10,9 @@ The implementation in this branch is based on the upstream `v0.3` code path, for
 - New `rgbled_pwm_adapter` shield targets Seeeduino XIAO BLE / nRF52840 onboard RGB LED.
 - New `CONFIG_RGBLED_WIDGET_BACKEND_GPIO` and `CONFIG_RGBLED_WIDGET_BACKEND_PWM` choice selects the LED backend.
 - New `&ind_rainbow` behavior toggles continuous rainbow mode.
-- New `CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON` starts rainbow mode at boot.
+- New `CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON` starts rainbow mode after boot indicators.
+- New `CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS` controls the extra delay after boot indicators before rainbow starts.
+- New `CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP` controls rainbow color advance per update.
 - Existing battery, connectivity, and layer indicators take priority over rainbow.
 
 ## Hardware Target
@@ -69,9 +71,16 @@ CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON=y
 Rainbow tuning defaults:
 
 ```conf
+CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS=0
 CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS=80
 CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=168
+CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP=4
 ```
+
+Keyboards can override these in their own `.conf` files. For example, use
+`CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS=3000` to wait three seconds before
+starting rainbow, or `CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=255` for maximum
+rainbow brightness.
 
 `CONFIG_RGBLED_WIDGET_RAINBOW_DURATION_MS` remains available from the initial implementation, but the current `&ind_rainbow` behavior is a continuous ON/OFF toggle and does not use a fixed duration.
 
@@ -118,7 +127,9 @@ Pressing `&ind_rainbow` toggles rainbow mode. If rainbow was started by `CONFIG_
 
 Rainbow is intentionally lower priority than the original widget functions.
 
-When battery, connectivity, or layer indicators write to the LED, those colors are shown first. Rainbow remains enabled, but its work item waits until the original indicator has finished, then resumes the animation.
+At boot, battery, connectivity, and layer indicators run first. If `CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON` is enabled, rainbow starts only after the boot indicators have had time to finish, plus `CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS`.
+
+When battery, connectivity, or layer indicators write to the LED after rainbow has started, those colors are shown first. Rainbow remains enabled, but its work item waits until the original indicator has finished, then resumes the animation.
 
 This preserves the original purpose of the widget:
 
@@ -134,7 +145,7 @@ This preserves the original purpose of the widget:
 
 Rainbow uses integer HSV-to-RGB conversion and `k_work_delayable`.
 
-The current hue step is `4` per update. The effective transition speed is controlled mostly by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS`, which defaults to `80`.
+The effective transition speed is controlled by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS` and `CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP`.
 
 ## Known Scope
 

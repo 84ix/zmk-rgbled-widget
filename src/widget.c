@@ -266,7 +266,7 @@ static void rainbow_work_handler(struct k_work *work) {
     scale_brightness(&red, &green, &blue);
     set_rgb_leds_u8(red, green, blue);
 
-    rainbow_hue += 4;
+    rainbow_hue += CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP;
     k_work_schedule(&rainbow_work, K_MSEC(CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS));
 }
 
@@ -617,13 +617,6 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
         return;
     }
 
-#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON)
-    set_rainbow_enabled(true);
-    initialized = true;
-    LOG_INF("Finished initializing LED widget with rainbow enabled");
-    return;
-#endif
-
 #if IS_ENABLED(CONFIG_ZMK_BATTERY_REPORTING)
     // check and indicate battery level on thread start
     LOG_INF("Indicating initial battery status");
@@ -644,6 +637,14 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
 #endif // SHOW_LAYER_COLORS
 
     initialized = true;
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON)
+    k_sleep(K_MSEC(CONFIG_RGBLED_WIDGET_CONN_BLINK_MS + CONFIG_RGBLED_WIDGET_INTERVAL_MS +
+                   CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS));
+    set_rainbow_enabled(true);
+    LOG_INF("Started rainbow after boot indicators");
+#endif
+
     LOG_INF("Finished initializing LED widget");
 }
 

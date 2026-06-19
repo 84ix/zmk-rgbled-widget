@@ -36,8 +36,13 @@ config RGBLED_WIDGET_RAINBOW
     depends on RGBLED_WIDGET_BACKEND_PWM
 
 config RGBLED_WIDGET_RAINBOW_DEFAULT_ON
-    bool "Start the rainbow indicator on boot"
+    bool "Start the rainbow indicator after boot indicators"
     depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_START_DELAY_MS
+    int "Delay before starting rainbow after boot indicators"
+    default 0
+    depends on RGBLED_WIDGET_RAINBOW_DEFAULT_ON
 
 config RGBLED_WIDGET_RAINBOW_DURATION_MS
     int "Rainbow indicator duration in ms"
@@ -53,6 +58,12 @@ config RGBLED_WIDGET_RAINBOW_BRIGHTNESS
     int "Rainbow indicator brightness"
     range 0 255
     default 168
+    depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_HUE_STEP
+    int "Rainbow hue step per update"
+    range 1 255
+    default 4
     depends on RGBLED_WIDGET_RAINBOW
 
 config RGBLED_WIDGET_INTERVAL_MS
