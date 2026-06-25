@@ -12,7 +12,11 @@ The implementation in this branch is based on the upstream `v0.3` code path, for
 - New `&ind_rainbow` behavior toggles continuous rainbow mode.
 - New `CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON` starts rainbow mode after boot indicators.
 - New `CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS` controls the extra delay after boot indicators before rainbow starts.
+- New `CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING` enables smooth brightness breathing.
+- New `CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_MIN_BRIGHTNESS` and `CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_PERIOD_MS` tune the breathing range and period.
 - New `CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP` controls rainbow color advance per update.
+- New `CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF` turns off the LED after keyboard inactivity.
+- New `CONFIG_RGBLED_WIDGET_KEY_IDLE_TIMEOUT_MS` controls the keyboard inactivity timeout.
 - Existing battery, connectivity, and layer indicators take priority over rainbow.
 
 ## Hardware Target
@@ -74,13 +78,27 @@ Rainbow tuning defaults:
 CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS=0
 CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS=80
 CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=168
+CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING=n
+CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_MIN_BRIGHTNESS=64
+CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_PERIOD_MS=5840
 CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP=4
+CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF=n
+CONFIG_RGBLED_WIDGET_KEY_IDLE_TIMEOUT_MS=300000
 ```
 
 Keyboards can override these in their own `.conf` files. For example, use
 `CONFIG_RGBLED_WIDGET_RAINBOW_START_DELAY_MS=3000` to wait three seconds before
 starting rainbow, or `CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS=255` for maximum
 rainbow brightness.
+
+When breathing is enabled, brightness follows a smoothstep curve between
+`CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_MIN_BRIGHTNESS` and
+`CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS`. Choose a breathing period whose
+update count is coprime with the hue cycle length to avoid visible synchronization.
+
+When keyboard idle-off is enabled, physical key position events reset the timeout.
+The LED turns off when the timeout expires and resumes on the next key event.
+Pointing-device movement does not reset the timeout or wake the LED.
 
 `CONFIG_RGBLED_WIDGET_RAINBOW_DURATION_MS` remains available from the initial implementation, but the current `&ind_rainbow` behavior is a continuous ON/OFF toggle and does not use a fixed duration.
 
@@ -145,7 +163,7 @@ This preserves the original purpose of the widget:
 
 Rainbow uses integer HSV-to-RGB conversion and `k_work_delayable`.
 
-The effective transition speed is controlled by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS` and `CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP`.
+The effective transition speed is controlled by `CONFIG_RGBLED_WIDGET_RAINBOW_INTERVAL_MS` and `CONFIG_RGBLED_WIDGET_RAINBOW_HUE_STEP`. Breathing uses an independent uptime-based phase, so its period remains stable even when indicator output temporarily suppresses rainbow rendering.
 
 ## Known Scope
 

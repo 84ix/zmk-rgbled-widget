@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_BACKEND_GPIO)
@@ -16,6 +18,7 @@
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/events/activity_state_changed.h>
 #include <zmk/keymap.h>
@@ -137,11 +140,17 @@ static bool initialized = false;
 // track current color for persistent indicators (layer color)
 uint8_t led_current_color = 0;
 
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+static struct k_work_delayable key_idle_work;
+static bool key_idle = false;
+#endif
+
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
 static struct k_work_delayable rainbow_work;
 static bool rainbow_active = false;
 static bool rainbow_enabled = false;
 static int64_t rainbow_suppressed_until;
+static int64_t rainbow_started_at;
 static uint8_t rainbow_hue;
 #endif
 
@@ -175,6 +184,17 @@ static void set_rgb_leds_u8(uint8_t red, uint8_t green, uint8_t blue) {
 
 // low-level method to control the LED
 static void set_rgb_leds(uint8_t color, uint32_t duration_ms) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+    if (key_idle) {
+        set_rgb_leds_u8(0, 0, 0);
+        if (duration_ms > 0) {
+            k_sleep(K_MSEC(duration_ms));
+        }
+        led_current_color = 0;
+        return;
+    }
+#endif
+
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
     if (rainbow_active) {
         int64_t suppress_until =
@@ -241,10 +261,31 @@ static void hsv_to_rgb_u8(uint8_t hue, uint8_t *red, uint8_t *green, uint8_t *bl
     }
 }
 
+static uint8_t rainbow_brightness(void) {
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING)
+    const uint32_t period = CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_PERIOD_MS;
+    const uint32_t half_period = period / 2;
+    const uint32_t phase = (k_uptime_get() - rainbow_started_at) % period;
+    const uint32_t ramp = phase < half_period ? phase : period - phase;
+    const uint32_t x = ((uint64_t)ramp * UINT16_MAX) / half_period;
+    const uint32_t smooth =
+        ((uint64_t)x * x * (3 * UINT16_MAX - 2 * x)) / ((uint64_t)UINT16_MAX * UINT16_MAX);
+    const uint8_t minimum = MIN(CONFIG_RGBLED_WIDGET_RAINBOW_BREATHING_MIN_BRIGHTNESS,
+                                CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS);
+
+    return minimum +
+           ((CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS - minimum) * smooth) / UINT16_MAX;
+#else
+    return CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS;
+#endif
+}
+
 static void scale_brightness(uint8_t *red, uint8_t *green, uint8_t *blue) {
-    *red = (*red * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
-    *green = (*green * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
-    *blue = (*blue * CONFIG_RGBLED_WIDGET_RAINBOW_BRIGHTNESS) / 255;
+    const uint8_t brightness = rainbow_brightness();
+
+    *red = (*red * brightness) / 255;
+    *green = (*green * brightness) / 255;
+    *blue = (*blue * brightness) / 255;
 }
 
 static void rainbow_work_handler(struct k_work *work) {
@@ -274,6 +315,7 @@ static void set_rainbow_active(bool active) {
     if (active) {
         rainbow_hue = 0;
         rainbow_suppressed_until = 0;
+        rainbow_started_at = k_uptime_get();
         rainbow_active = true;
         k_work_cancel_delayable(&rainbow_work);
         k_work_schedule(&rainbow_work, K_NO_WAIT);
@@ -306,7 +348,11 @@ static int rainbow_activity_listener_cb(const zmk_event_t *eh) {
         set_rainbow_active(false);
         break;
     case ZMK_ACTIVITY_ACTIVE:
-        if (rainbow_enabled) {
+        if (rainbow_enabled
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+            && !key_idle
+#endif
+        ) {
             set_rainbow_active(true);
         }
         break;
@@ -319,6 +365,42 @@ static int rainbow_activity_listener_cb(const zmk_event_t *eh) {
 
 ZMK_LISTENER(rainbow_activity_listener, rainbow_activity_listener_cb);
 ZMK_SUBSCRIPTION(rainbow_activity_listener, zmk_activity_state_changed);
+#endif
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+static void key_idle_work_handler(struct k_work *work) {
+    key_idle = true;
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+    set_rainbow_active(false);
+#else
+    set_rgb_leds_u8(0, 0, 0);
+    led_current_color = 0;
+#endif
+    LOG_INF("Turned off LED after keyboard inactivity");
+}
+
+static void reset_key_idle_timeout(void) {
+    bool was_idle = key_idle;
+    key_idle = false;
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
+    if (was_idle && rainbow_enabled) {
+        set_rainbow_active(true);
+    }
+#endif
+
+    k_work_reschedule(&key_idle_work, K_MSEC(CONFIG_RGBLED_WIDGET_KEY_IDLE_TIMEOUT_MS));
+}
+
+static int key_idle_listener_cb(const zmk_event_t *eh) {
+    if (initialized && as_zmk_position_state_changed(eh) != NULL) {
+        reset_key_idle_timeout();
+    }
+    return 0;
+}
+
+ZMK_LISTENER(key_idle_listener, key_idle_listener_cb);
+ZMK_SUBSCRIPTION(key_idle_listener, zmk_position_state_changed);
 #endif
 
 // define message queue of blink work items, that will be processed by a
@@ -575,6 +657,9 @@ extern void led_process_thread(void *d0, void *d1, void *d2) {
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW)
     k_work_init_delayable(&rainbow_work, rainbow_work_handler);
 #endif
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+    k_work_init_delayable(&key_idle_work, key_idle_work_handler);
+#endif
 
     while (true) {
         // wait until a blink item is received and process it
@@ -637,6 +722,10 @@ extern void led_init_thread(void *d0, void *d1, void *d2) {
 #endif // SHOW_LAYER_COLORS
 
     initialized = true;
+
+#if IS_ENABLED(CONFIG_RGBLED_WIDGET_KEY_IDLE_OFF)
+    reset_key_idle_timeout();
+#endif
 
 #if IS_ENABLED(CONFIG_RGBLED_WIDGET_RAINBOW_DEFAULT_ON)
     k_sleep(K_MSEC(CONFIG_RGBLED_WIDGET_CONN_BLINK_MS + CONFIG_RGBLED_WIDGET_INTERVAL_MS +

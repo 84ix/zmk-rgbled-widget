@@ -60,6 +60,22 @@ config RGBLED_WIDGET_RAINBOW_BRIGHTNESS
     default 168
     depends on RGBLED_WIDGET_RAINBOW
 
+config RGBLED_WIDGET_RAINBOW_BREATHING
+    bool "Enable rainbow brightness breathing"
+    depends on RGBLED_WIDGET_RAINBOW
+
+config RGBLED_WIDGET_RAINBOW_BREATHING_MIN_BRIGHTNESS
+    int "Minimum rainbow breathing brightness"
+    range 0 255
+    default 64
+    depends on RGBLED_WIDGET_RAINBOW_BREATHING
+
+config RGBLED_WIDGET_RAINBOW_BREATHING_PERIOD_MS
+    int "Rainbow breathing period in ms"
+    range 160 60000
+    default 5840
+    depends on RGBLED_WIDGET_RAINBOW_BREATHING
+
 config RGBLED_WIDGET_RAINBOW_HUE_STEP
     int "Rainbow hue step per update"
     range 1 255
@@ -69,6 +85,15 @@ config RGBLED_WIDGET_RAINBOW_HUE_STEP
 config RGBLED_WIDGET_INTERVAL_MS
     int "Minimum wait duration between two blinks in ms"
     default 500
+
+config RGBLED_WIDGET_KEY_IDLE_OFF
+    bool "Turn off the LED after keyboard inactivity"
+
+config RGBLED_WIDGET_KEY_IDLE_TIMEOUT_MS
+    int "Keyboard inactivity timeout in ms"
+    range 1000 3600000
+    default 300000
+    depends on RGBLED_WIDGET_KEY_IDLE_OFF
 
 # Battery level settings
 
